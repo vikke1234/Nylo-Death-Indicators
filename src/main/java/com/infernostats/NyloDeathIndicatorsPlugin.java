@@ -1,9 +1,11 @@
 package com.infernostats;
 
+import com.google.common.annotations.VisibleForTesting;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -12,11 +14,15 @@ import javax.inject.Inject;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.GraphicID;
+import net.runelite.api.GraphicsObject;
+import net.runelite.api.Hitsplat;
 import net.runelite.api.ItemID;
 import net.runelite.api.NPC;
 import net.runelite.api.NpcID;
 import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
+import net.runelite.api.Renderable;
 import net.runelite.api.Skill;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.events.FakeXpDrop;
@@ -27,6 +33,7 @@ import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.kit.KitType;
 import net.runelite.client.callback.ClientThread;
+import net.runelite.client.callback.Hooks;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.party.PartyService;
 import net.runelite.client.party.WSClient;
@@ -44,6 +51,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	private int partySize = 0;
 	private boolean isInNyloRegion = false;
 	private final ArrayList<Nylocas> nylos = new ArrayList<>();
+	private final ArrayList<Nylocas> deadNylos = new ArrayList<>();
 	private final Map<Skill, Integer> previousXpMap = new EnumMap<>(Skill.class);
 
 	private static final Set<Integer> CHINCHOMPAS = new HashSet<>(Arrays.asList(
@@ -82,6 +90,8 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	private static final int BARRAGE_ANIMATION = 1979;
 	private static final int NYLOCAS_REGION_ID = 13122;
 
+	private final Hooks.RenderableDrawListener drawListener = this::shouldDraw;
+
 	@Inject
 	private Client client;
 
@@ -94,17 +104,22 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	@Inject
 	private PartyService party;
 
+	@Inject
+	private Hooks hooks;
+
 	@Override
 	protected void startUp()
 	{
 		clientThread.invoke(this::initializePreviousXpMap);
 
+		hooks.registerRenderableDrawListener(drawListener);
 		wsClient.registerMessage(NpcDamaged.class);
 	}
 
 	@Override
 	protected void shutDown()
 	{
+		hooks.unregisterRenderableDrawListener(drawListener);
 		wsClient.unregisterMessage(NpcDamaged.class);
 	}
 
@@ -140,6 +155,18 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			if (!isInNyloRegion)
 			{
 				this.nylos.clear();
+			}
+		}
+
+		Iterator<Nylocas> nylocasIterator = deadNylos.iterator();
+		while (nylocasIterator.hasNext())
+		{
+			Nylocas nylocas = nylocasIterator.next();
+			nylocas.setHidden(nylocas.getHidden() + 1);
+			if (nylocas.getHidden() > 5)
+			{
+				nylocas.setHidden(0);
+				nylocasIterator.remove();
 			}
 		}
 	}
@@ -239,12 +266,8 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			return;
 		}
 
-		if (this.nylos.isEmpty())
-		{
-			return;
-		}
-
 		this.nylos.removeIf((nylo) -> nylo.getNpcIndex() == event.getNpc().getIndex());
+		this.deadNylos.removeIf((nylo) -> nylo.getNpcIndex() == event.getNpc().getIndex());
 	}
 
 	@Subscribe
@@ -258,7 +281,32 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		Actor actor = event.getActor();
 		if (actor instanceof NPC)
 		{
-			applyDamage(((NPC)actor).getIndex(), event.getHitsplat().getAmount());
+			final int npcIndex = ((NPC)actor).getIndex();
+			final int damage = event.getHitsplat().getAmount();
+
+			for (Nylocas nylocas : this.nylos)
+			{
+				if (nylocas.getNpcIndex() != npcIndex)
+				{
+					continue;
+				}
+
+				if (event.getHitsplat().getHitsplatType().equals(Hitsplat.HitsplatType.HEAL))
+				{
+					nylocas.setHp(nylocas.getHp() + damage);
+				}
+				else
+				{
+					nylocas.setHp(nylocas.getHp() - damage);
+				}
+
+				nylocas.setQueuedDamage(nylocas.getQueuedDamage() - damage);
+
+				if (nylocas.getHp() <= 0)
+				{
+					deadNylos.removeIf((nylo) -> nylo.getNpcIndex() == npcIndex);
+				}
+			}
 		}
 	}
 
@@ -270,7 +318,29 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			return;
 		}
 
-		clientThread.invokeLater(() -> applyDamage(event.getNpcIndex(), event.getDamage()));
+		clientThread.invokeLater(() -> {
+			final int npcIndex = event.getNpcIndex();
+			final int damage = event.getDamage();
+
+			for (Nylocas nylocas : this.nylos)
+			{
+				if (nylocas.getNpcIndex() != npcIndex)
+				{
+					continue;
+				}
+
+				nylocas.setQueuedDamage(nylocas.getQueuedDamage() + damage);
+
+				if (nylocas.getHp() - nylocas.getQueuedDamage() <= 0)
+				{
+					if (deadNylos.stream().noneMatch(deadNylo -> deadNylo.getNpcIndex() == npcIndex))
+					{
+						deadNylos.add(nylocas);
+						client.getCachedNPCs()[nylocas.getNpcIndex()].setDead(true);
+					}
+				}
+			}
+		});
 	}
 
 	@Subscribe
@@ -380,7 +450,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		sendDamage(player, damage);
 	}
 
-	void sendDamage(Player player, int damage)
+	private void sendDamage(Player player, int damage)
 	{
 		if (damage <= 0)
 		{
@@ -393,21 +463,6 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			NPC interactedNPC = (NPC) interacted;
 			final int npcIndex = interactedNPC.getIndex();
 			clientThread.invokeLater(() -> party.send(new NpcDamaged(npcIndex, damage)));
-		}
-	}
-
-	private void applyDamage(int npcIndex, int damage)
-	{
-		for (Nylocas nylocas : this.nylos)
-		{
-			if (nylocas.getNpcIndex() == npcIndex)
-			{
-				nylocas.setHp(nylocas.getHp() - damage);
-				if (nylocas.getHp() <= 0)
-				{
-					client.getCachedNPCs()[nylocas.getNpcIndex()].setDead(true);
-				}
-			}
 		}
 	}
 
@@ -429,5 +484,30 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	private boolean isInNylocasRegion()
 	{
 		return client.getMapRegions() != null && ArrayUtils.contains(client.getMapRegions(), NYLOCAS_REGION_ID);
+	}
+
+	@VisibleForTesting
+	boolean shouldDraw(Renderable renderable, boolean drawingUI)
+	{
+		if (renderable instanceof NPC)
+		{
+			return deadNylos.stream()
+				.noneMatch(nylocas -> nylocas.getNpcIndex() == ((NPC) renderable).getIndex());
+		}
+		else if (renderable instanceof GraphicsObject)
+		{
+			switch (((GraphicsObject) renderable).getId())
+			{
+				case GraphicID.MELEE_NYLO_DEATH:
+				case GraphicID.RANGE_NYLO_DEATH:
+				case GraphicID.MAGE_NYLO_DEATH:
+				case GraphicID.MELEE_NYLO_EXPLOSION:
+				case GraphicID.RANGE_NYLO_EXPLOSION:
+				case GraphicID.MAGE_NYLO_EXPLOSION:
+					return false;
+			}
+		}
+
+		return true;
 	}
 }
