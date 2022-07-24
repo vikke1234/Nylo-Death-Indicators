@@ -346,7 +346,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	@Subscribe
 	protected void onFakeXpDrop(FakeXpDrop event)
 	{
-		preProcessXpDrop(event.getSkill(), event.getXp());
+		processXpDrop(event.getSkill(), event.getXp());
 	}
 
 	@Subscribe
