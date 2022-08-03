@@ -16,7 +16,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.GraphicID;
 import net.runelite.api.GraphicsObject;
-import net.runelite.api.Hitsplat;
+import net.runelite.api.HitsplatID;
 import net.runelite.api.ItemID;
 import net.runelite.api.NPC;
 import net.runelite.api.NpcID;
@@ -291,7 +291,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 					continue;
 				}
 
-				if (event.getHitsplat().getHitsplatType().equals(Hitsplat.HitsplatType.HEAL))
+				if (event.getHitsplat().getHitsplatType() == HitsplatID.HEAL)
 				{
 					nylocas.setHp(nylocas.getHp() + damage);
 				}
