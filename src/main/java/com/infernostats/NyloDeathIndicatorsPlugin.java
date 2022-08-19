@@ -163,7 +163,9 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		{
 			Nylocas nylocas = nylocasIterator.next();
 			nylocas.setHidden(nylocas.getHidden() + 1);
-			if (nylocas.getHidden() > 5)
+
+			final boolean isDead = nylocas.getNpc().getHealthRatio() == 0;
+			if (nylocas.getHidden() > 5 && !isDead)
 			{
 				nylocas.setHidden(0);
 				nylocasIterator.remove();
@@ -218,16 +220,16 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 				break;
 		}
 
-		int id = event.getNpc().getId();
-		int index = event.getNpc().getIndex();
-		switch (id) {
+		final NPC npc = event.getNpc();
+		final int index = npc.getIndex();
+		switch (npc.getId()) {
 			case NpcID.NYLOCAS_ISCHYROS_8342:
 			case NpcID.NYLOCAS_TOXOBOLOS_8343:
 			case NpcID.NYLOCAS_HAGIOS:
 			case NpcID.NYLOCAS_ISCHYROS_10791:
 			case NpcID.NYLOCAS_TOXOBOLOS_10792:
 			case NpcID.NYLOCAS_HAGIOS_10793:
-				this.nylos.add(new Nylocas(index, smallHP));
+				this.nylos.add(new Nylocas(npc, index, smallHP));
 				break;
 			case NpcID.NYLOCAS_ISCHYROS_8345:
 			case NpcID.NYLOCAS_TOXOBOLOS_8346:
@@ -244,17 +246,17 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			case NpcID.NYLOCAS_ISCHYROS_10800:
 			case NpcID.NYLOCAS_TOXOBOLOS_10801:
 			case NpcID.NYLOCAS_HAGIOS_10802:
-				this.nylos.add(new Nylocas(index, bigHP));
+				this.nylos.add(new Nylocas(npc, index, bigHP));
 				break;
 			case NpcID.NYLOCAS_ISCHYROS_10774:
 			case NpcID.NYLOCAS_TOXOBOLOS_10775:
 			case NpcID.NYLOCAS_HAGIOS_10776:
-				this.nylos.add(new Nylocas(index, smSmallHP));
+				this.nylos.add(new Nylocas(npc, index, smSmallHP));
 				break;
 			case NpcID.NYLOCAS_ISCHYROS_10777:
 			case NpcID.NYLOCAS_TOXOBOLOS_10778:
 			case NpcID.NYLOCAS_HAGIOS_10779:
-				this.nylos.add(new Nylocas(index, smBigHP));
+				this.nylos.add(new Nylocas(npc, index, smBigHP));
 		}
 	}
 
@@ -300,12 +302,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 					nylocas.setHp(nylocas.getHp() - damage);
 				}
 
-				nylocas.setQueuedDamage(nylocas.getQueuedDamage() - damage);
-
-				if (nylocas.getHp() <= 0)
-				{
-					deadNylos.removeIf((nylo) -> nylo.getNpcIndex() == npcIndex);
-				}
+				nylocas.setQueuedDamage(Math.max(0, nylocas.getQueuedDamage() - damage));
 			}
 		}
 	}
@@ -336,7 +333,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 					if (deadNylos.stream().noneMatch(deadNylo -> deadNylo.getNpcIndex() == npcIndex))
 					{
 						deadNylos.add(nylocas);
-						client.getCachedNPCs()[nylocas.getNpcIndex()].setDead(true);
+						nylocas.getNpc().setDead(true);
 					}
 				}
 			}
@@ -462,7 +459,16 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		{
 			NPC interactedNPC = (NPC) interacted;
 			final int npcIndex = interactedNPC.getIndex();
-			clientThread.invokeLater(() -> party.send(new NpcDamaged(npcIndex, damage)));
+			final NpcDamaged npcDamaged = new NpcDamaged(npcIndex, damage);
+
+			if (party.isInParty())
+			{
+				clientThread.invokeLater(() -> party.send(npcDamaged));
+			}
+			else
+			{
+				onNpcDamaged(npcDamaged);
+			}
 		}
 	}
 
