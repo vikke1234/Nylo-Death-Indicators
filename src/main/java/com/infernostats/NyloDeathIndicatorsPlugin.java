@@ -70,7 +70,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	));
 
 	private static final Set<Integer> NYLO_MELEE_WEAPONS = new HashSet<>(Arrays.asList(
-		ItemID.SWIFT_BLADE, ItemID.HAM_JOINT, ItemID.EVENT_RPG,
+		ItemID.SWIFT_BLADE, ItemID.HAM_JOINT, ItemID.GOBLIN_PAINT_CANNON,
 		ItemID.DRAGON_CLAWS, ItemID.DRAGON_SCIMITAR,
 		ItemID.ABYSSAL_BLUDGEON, ItemID.INQUISITORS_MACE,
 		ItemID.SARADOMIN_SWORD, ItemID.SARADOMINS_BLESSED_SWORD,
