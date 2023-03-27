@@ -35,6 +35,7 @@ import net.runelite.api.kit.KitType;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.callback.Hooks;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.party.PartyMember;
 import net.runelite.client.party.PartyService;
 import net.runelite.client.party.WSClient;
 import net.runelite.client.plugins.Plugin;
@@ -315,6 +316,16 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			return;
 		}
 
+		PartyMember member = party.getLocalMember();
+		if (member != null)
+		{
+			// Ignore party messages from yourself, they're already applied
+			if (member.getMemberId() == event.getMemberId())
+			{
+				return;
+			}
+		}
+
 		clientThread.invokeLater(() -> {
 			final int npcIndex = event.getNpcIndex();
 			final int damage = event.getDamage();
@@ -465,10 +476,8 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			{
 				clientThread.invokeLater(() -> party.send(npcDamaged));
 			}
-			else
-			{
-				onNpcDamaged(npcDamaged);
-			}
+
+			onNpcDamaged(npcDamaged);
 		}
 	}
 
