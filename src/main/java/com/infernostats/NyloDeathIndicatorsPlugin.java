@@ -9,6 +9,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import net.runelite.api.Actor;
@@ -25,6 +26,7 @@ import net.runelite.api.PlayerComposition;
 import net.runelite.api.Renderable;
 import net.runelite.api.Skill;
 import net.runelite.api.VarPlayer;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.FakeXpDrop;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
@@ -402,19 +404,28 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		int weaponUsed = playerComposition.getEquipmentId(KitType.WEAPON);
 		int attackStyle = client.getVarpValue(VarPlayer.ATTACK_STYLE);
 
+		boolean isBarrageCast = player.getAnimation() == BARRAGE_ANIMATION;
+		boolean isDefensiveCast = attackStyle == 3;
 		boolean isChinchompa = CHINCHOMPAS.contains(weaponUsed);
 		boolean isPoweredStaff = POWERED_STAVES.contains(weaponUsed);
 
-		if (player.getAnimation() == BARRAGE_ANIMATION)
-		{
-			return;
-		}
-
 		switch (skill)
 		{
+			case HITPOINTS:
+				if (isBarrageCast)
+				{
+					final long hit = Math.round(xp * (3.0d / 4.0d));
+					handleAreaOfEffectAttack(hit, player.getInteracting(), true);
+				}
+
+				return;
 			case MAGIC:
-				// 0 == Accurate 1 | 1 == Accurate 2 | 3 == Defensive
-				if (isPoweredStaff && attackStyle != 3)
+				if (isBarrageCast)
+				{
+					return;
+				}
+
+				if (isPoweredStaff && !isDefensiveCast)
 				{
 					damage = (int) ((double) xp / 2.0D);
 				}
@@ -423,7 +434,10 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			case ATTACK:
 			case STRENGTH:
 			case DEFENCE:
-				boolean isDefensiveCast = attackStyle == 3;
+				if (isBarrageCast)
+				{
+					return;
+				}
 
 				if (MULTIKILL_MELEE_WEAPONS.contains(weaponUsed))
 				{
@@ -440,11 +454,6 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 
 				break;
 			case RANGED:
-				if (isChinchompa)
-				{
-					return;
-				}
-
 				if (attackStyle == 3)
 				{
 					damage = (int) ((double) xp / 2.0D);
@@ -453,9 +462,51 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 				{
 					damage = (int) ((double) xp / 4.0D);
 				}
+
+				if (isChinchompa)
+				{
+					handleAreaOfEffectAttack(damage, player.getInteracting(), false);
+					return;
+				}
 		}
 
 		sendDamage(player, damage);
+	}
+
+	private void handleAreaOfEffectAttack(final long hit, Actor interacted, boolean isBarrage)
+	{
+		Predicate<Integer> type;
+		if (isBarrage)
+		{
+			type = NylocasType::isMageNylocas;
+		}
+		else
+		{
+			type = NylocasType::isRangeNylocas;
+		}
+
+		if (interacted instanceof NPC)
+		{
+			NPC interactedNPC = (NPC) interacted;
+			WorldPoint targetPoint = interactedNPC.getWorldLocation();
+
+			// Filter all nylos within the radius and then
+			// Filter all nylos that can be damaged within the radius
+			List<Nylocas> clump = this.nylos.stream()
+				.filter(nylo -> nylo.getNpc().getWorldLocation().distanceTo(targetPoint) <= 1)
+				.filter(nylo -> type.test(nylo.getNpc().getId()))
+				.collect(Collectors.toList());
+
+			final int clumpHp = clump.stream()
+				.mapToInt(Nylocas::getHp)
+				.sum();
+			if (clumpHp > hit)
+			{
+				return;
+			}
+
+			sendClumpDamage(clump);
+		}
 	}
 
 	private void sendDamage(Player player, int damage)
@@ -471,6 +522,22 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			NPC interactedNPC = (NPC) interacted;
 			final int npcIndex = interactedNPC.getIndex();
 			final NpcDamaged npcDamaged = new NpcDamaged(npcIndex, damage);
+
+			if (party.isInParty())
+			{
+				clientThread.invokeLater(() -> party.send(npcDamaged));
+			}
+
+			onNpcDamaged(npcDamaged);
+		}
+	}
+
+	private void sendClumpDamage(List<Nylocas> clump)
+	{
+		for (Nylocas nylocas : clump)
+		{
+			final int npcIndex = nylocas.getNpcIndex();
+			final NpcDamaged npcDamaged = new NpcDamaged(npcIndex, nylocas.getHp());
 
 			if (party.isInParty())
 			{
