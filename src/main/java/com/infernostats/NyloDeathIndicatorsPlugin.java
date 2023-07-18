@@ -55,6 +55,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	private boolean isInNyloRegion = false;
 	private final ArrayList<Nylocas> nylos = new ArrayList<>();
 	private final ArrayList<Nylocas> deadNylos = new ArrayList<>();
+	private final Map<Skill, Integer> fakeXpMap = new EnumMap<>(Skill.class);
 	private final Map<Skill, Integer> previousXpMap = new EnumMap<>(Skill.class);
 
 	private static final Set<Integer> CHINCHOMPAS = new HashSet<>(Arrays.asList(
@@ -80,7 +81,13 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		ItemID.GHRAZI_RAPIER, ItemID.HOLY_GHRAZI_RAPIER,
 		ItemID.ABYSSAL_WHIP, ItemID.ABYSSAL_WHIP_OR,
 		ItemID.FROZEN_ABYSSAL_WHIP, ItemID.VOLCANIC_ABYSSAL_WHIP,
-		ItemID.ABYSSAL_TENTACLE, ItemID.ABYSSAL_TENTACLE_OR
+		ItemID.ABYSSAL_TENTACLE, ItemID.ABYSSAL_TENTACLE_OR,
+		ItemID.BLADE_OF_SAELDOR, ItemID.BLADE_OF_SAELDOR_C,
+		ItemID.BLADE_OF_SAELDOR_C_24553, ItemID.BLADE_OF_SAELDOR_C_25870,
+		ItemID.BLADE_OF_SAELDOR_C_25872, ItemID.BLADE_OF_SAELDOR_C_25874,
+		ItemID.BLADE_OF_SAELDOR_C_25876, ItemID.BLADE_OF_SAELDOR_C_25878,
+		ItemID.BLADE_OF_SAELDOR_C_25880, ItemID.BLADE_OF_SAELDOR_C_25882,
+		ItemID.DRAGON_CLAWS_CR, ItemID.VOIDWAKER
 	));
 
 	private static final Set<Integer> MULTIKILL_MELEE_WEAPONS = new HashSet<>(Arrays.asList(
@@ -161,6 +168,13 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			}
 		}
 
+		// Group FakeXP drops and process them every game tick
+		for (Map.Entry<Skill, Integer> xp : fakeXpMap.entrySet())
+		{
+			processXpDrop(xp.getKey(), xp.getValue());
+		}
+		fakeXpMap.clear();
+
 		Iterator<Nylocas> nylocasIterator = deadNylos.iterator();
 		while (nylocasIterator.hasNext())
 		{
@@ -200,8 +214,8 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			case 2:
 				bigHP = 16;
 				smallHP = 8;
-				smSmallHP = 4;
-				smBigHP = 6;
+				smSmallHP = 3;
+				smBigHP = 5;
 				break;
 			case 3:
 				bigHP = 16;
@@ -356,7 +370,8 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	@Subscribe
 	protected void onFakeXpDrop(FakeXpDrop event)
 	{
-		processXpDrop(event.getSkill(), event.getXp());
+		final int currentXp = fakeXpMap.getOrDefault(event.getSkill(), 0);
+		fakeXpMap.put(event.getSkill(), currentXp + event.getXp());
 	}
 
 	@Subscribe
