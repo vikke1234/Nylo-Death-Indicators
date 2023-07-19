@@ -26,6 +26,7 @@ import net.runelite.api.PlayerComposition;
 import net.runelite.api.Renderable;
 import net.runelite.api.Skill;
 import net.runelite.api.VarPlayer;
+import net.runelite.api.Varbits;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.FakeXpDrop;
 import net.runelite.api.events.GameTick;
@@ -420,27 +421,38 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		int attackStyle = client.getVarpValue(VarPlayer.ATTACK_STYLE);
 
 		boolean isBarrageCast = player.getAnimation() == BARRAGE_ANIMATION;
-		boolean isDefensiveCast = attackStyle == 3;
 		boolean isChinchompa = CHINCHOMPAS.contains(weaponUsed);
 		boolean isPoweredStaff = POWERED_STAVES.contains(weaponUsed);
 
+		boolean isDefensiveCast = false;
+		if (isBarrageCast)
+		{
+			isDefensiveCast = client.getVarbitValue(Varbits.DEFENSIVE_CASTING_MODE) == 1;
+		}
+		else if (isPoweredStaff)
+		{
+			isDefensiveCast = attackStyle == 3;
+		}
+
 		switch (skill)
 		{
-			case HITPOINTS:
-				if (isBarrageCast)
-				{
-					final long hit = Math.round(xp * (3.0d / 4.0d));
-					handleAreaOfEffectAttack(hit, player.getInteracting(), true);
-				}
-
-				return;
 			case MAGIC:
-				if (isBarrageCast)
+				if (isBarrageCast && !isDefensiveCast)
 				{
+					if (xp % 2 == 0)
+					{
+						// Ice Barrage casts are always even due to 52 base xp
+						damage = (xp - 52) / 2;
+					}
+					else
+					{
+						// Blood Barrage casts are always odd due to 51 base xp
+						damage = (xp - 51) / 2;
+					}
+					handleAreaOfEffectAttack(damage, player.getInteracting(), true);
 					return;
 				}
-
-				if (isPoweredStaff && !isDefensiveCast)
+				else if (isPoweredStaff && !isDefensiveCast)
 				{
 					damage = (int) ((double) xp / 2.0D);
 				}
@@ -449,11 +461,6 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 			case ATTACK:
 			case STRENGTH:
 			case DEFENCE:
-				if (isBarrageCast)
-				{
-					return;
-				}
-
 				if (MULTIKILL_MELEE_WEAPONS.contains(weaponUsed))
 				{
 					return;
@@ -461,6 +468,11 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 				else if (NYLO_MELEE_WEAPONS.contains(weaponUsed))
 				{
 					damage = (int) ((double) xp / 4.0D);
+				}
+				else if (isBarrageCast && isDefensiveCast)
+				{
+					handleAreaOfEffectAttack(xp, player.getInteracting(), true);
+					return;
 				}
 				else if (isPoweredStaff && isDefensiveCast)
 				{
