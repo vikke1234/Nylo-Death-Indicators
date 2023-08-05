@@ -425,12 +425,14 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		boolean isPoweredStaff = POWERED_STAVES.contains(weaponUsed);
 
 		boolean isDefensiveCast = false;
-		if (isBarrageCast)
+		if (isBarrageCast && !isPoweredStaff)
 		{
 			isDefensiveCast = client.getVarbitValue(Varbits.DEFENSIVE_CASTING_MODE) == 1;
 		}
 		else if (isPoweredStaff)
 		{
+			// Manually casting barrage with a powered staff equipped uses the staff's
+			// current attack option to decide whether to cast on defensive or not
 			isDefensiveCast = attackStyle == 3;
 		}
 
