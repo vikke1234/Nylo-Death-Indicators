@@ -102,6 +102,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	));
 
 	private static final int BARRAGE_ANIMATION = 1979;
+	private static final int DRAGON_FIRE_SHIELD_ANIMATION = 6696;
 	private static final int NYLOCAS_REGION_ID = 13122;
 
 	private final Hooks.RenderableDrawListener drawListener = this::shouldDraw;
@@ -424,6 +425,8 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		int attackStyle = client.getVarpValue(VarPlayer.ATTACK_STYLE);
 
 		boolean isBarrageCast = player.getAnimation() == BARRAGE_ANIMATION;
+		boolean isDragonFireShield = player.getAnimation() == DRAGON_FIRE_SHIELD_ANIMATION;
+
 		boolean isChinchompa = CHINCHOMPAS.contains(weaponUsed);
 		boolean isPoweredStaff = POWERED_STAVES.contains(weaponUsed);
 
@@ -471,6 +474,10 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 					return;
 				}
 				else if (NYLO_MELEE_WEAPONS.contains(weaponUsed))
+				{
+					damage = (int) ((double) xp / 4.0D);
+				}
+				else if (isDragonFireShield)
 				{
 					damage = (int) ((double) xp / 4.0D);
 				}
