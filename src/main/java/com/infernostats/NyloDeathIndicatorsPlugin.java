@@ -1,17 +1,12 @@
 package com.infernostats;
 
 import com.google.common.annotations.VisibleForTesting;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.EnumMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+
+import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -35,6 +30,7 @@ import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.kit.KitType;
+import net.runelite.api.widgets.WidgetUtil;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.callback.Hooks;
 import net.runelite.client.eventbus.Subscribe;
@@ -50,10 +46,10 @@ import org.apache.commons.lang3.ArrayUtils;
 	name = "Nylo Death Indicators",
 	description = "Hide dead nylos faster"
 )
-public class NyloDeathIndicatorsPlugin extends Plugin
-{
-	private int partySize = 0;
-	private boolean isInNyloRegion = false;
+public class NyloDeathIndicatorsPlugin extends Plugin {
+    private boolean isInNyloRegion = false;
+
+	private boolean isInAmpkenregion = false;
 	private final ArrayList<Nylocas> nylos = new ArrayList<>();
 	private final ArrayList<Nylocas> deadNylos = new ArrayList<>();
 	private final Map<Skill, Integer> fakeXpMap = new EnumMap<>(Skill.class);
@@ -156,21 +152,12 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	@Subscribe
 	protected void onGameTick(GameTick event)
 	{
-		if (!isInNyloRegion)
-		{
-			isInNyloRegion = isInNylocasRegion();
-			if (isInNyloRegion)
-			{
-				partySize = getParty().size();
-			}
-		}
-		else
-		{
-			isInNyloRegion = isInNylocasRegion();
-			if (!isInNyloRegion)
-			{
-				this.nylos.clear();
-			}
+		isInNyloRegion = isInNylocasRegion();
+		isInAmpkenregion = isInAmpkenregion();
+		boolean surfing = isInNyloRegion || isInAmpkenregion;
+
+		if (!surfing) {
+			this.nylos.clear();
 		}
 
 		// Group FakeXP drops and process them every game tick
@@ -195,20 +182,15 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		}
 	}
 
-	@Subscribe
-	protected void onNpcSpawned(NpcSpawned event)
+	private void ToBNPCSpawned(NpcSpawned event)
 	{
-		if (!isInNyloRegion)
-		{
-			return;
-		}
-
+        int partySize = this.getParty().size();
 		int smSmallHP = -1;
 		int smBigHP = -1;
 		int bigHP = -1;
 		int smallHP = -1;
 
-		switch (this.partySize)
+		switch (partySize)
 		{
 			case 1:
 				bigHP = 16;
@@ -282,10 +264,87 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 		}
 	}
 
+	private double getToaHealthScaling()
+	{
+		int partySize = 1;
+		double partyScaling = 1;
+		for (int i = 1; i < 8; i++) {
+			if (client.getVarbitValue(Varbits.TOA_MEMBER_0_HEALTH + i) != 0)
+			{
+				partySize++;
+				if (partySize < 4) {
+					partyScaling += .9;
+				} else {
+					partyScaling += .6;
+				}
+			}
+		}
+
+		int level = client.getVarbitValue(Varbits.TOA_RAID_LEVEL);
+		double modifier = (2 * level / 500.0) + partyScaling;
+
+		return modifier;
+	}
+
+	private void ToANPCSpawned(NpcSpawned event)
+	{
+		double scaling = getToaHealthScaling();
+		final int thrall_base = 2;
+		final int base_health = 4;
+		final int cursed = 10;
+		final int shaman = 16;
+
+		NPC npc = event.getNpc();
+		int index = npc.getIndex();
+
+		int health = base_health;
+		switch (npc.getId()) {
+			case NpcID.BABOON_BRAWLER_11712:
+			case NpcID.BABOON_MAGE_11714:
+			case NpcID.BABOON_THROWER_11713:
+				// doubles health after wave X
+				health = base_health * 2;
+			case NpcID.BABOON_BRAWLER:
+			case NpcID.BABOON_MAGE:
+			case NpcID.BABOON_THROWER:
+				// Do nothing
+				break;
+
+			case NpcID.BABOON_SHAMAN:
+				health = shaman;
+				break;
+			case NpcID.CURSED_BABOON:
+				health = cursed;
+				break;
+
+			case NpcID.BABOON_THRALL:
+				health = thrall_base;
+				break;
+
+			default:
+				return;
+		}
+
+		this.nylos.add(new Nylocas(npc, index, (int)Math.floor(health * scaling)));
+	}
+
+	@Subscribe
+	protected void onNpcSpawned(NpcSpawned event)
+	{
+		if (isInNyloRegion)
+		{
+			ToBNPCSpawned(event);
+		}
+		else if (isInAmpkenregion)
+		{
+			ToANPCSpawned(event);
+		}
+	}
+
 	@Subscribe
 	protected void onNpcDespawned(NpcDespawned event)
 	{
-		if (!isInNyloRegion)
+		if (!isInNyloRegion && !isInAmpkenregion)
 		{
 			return;
 		}
@@ -297,7 +356,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	@Subscribe
 	protected void onHitsplatApplied(HitsplatApplied event)
 	{
-		if (!isInNyloRegion)
+		if (!isInNyloRegion && !isInAmpkenregion)
 		{
 			return;
 		}
@@ -332,7 +391,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	@Subscribe
 	protected void onNpcDamaged(NpcDamaged event)
 	{
-		if (!isInNyloRegion)
+		if (!isInNyloRegion && !isInAmpkenregion)
 		{
 			return;
 		}
@@ -402,7 +461,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 
 	private void processXpDrop(Skill skill, final int xp)
 	{
-		if (!isInNylocasRegion())
+		if (!isInNylocasRegion() && !isInAmpkenregion)
 		{
 			return;
 		}
@@ -605,6 +664,11 @@ public class NyloDeathIndicatorsPlugin extends Plugin
 	private boolean isInNylocasRegion()
 	{
 		return client.getMapRegions() != null && ArrayUtils.contains(client.getMapRegions(), NYLOCAS_REGION_ID);
+	}
+
+	private boolean isInAmpkenregion()
+	{
+		return client.getMapRegions() != null && ArrayUtils.contains(client.getMapRegions(), 15186);
 	}
 
 	@VisibleForTesting
