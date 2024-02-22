@@ -43,8 +43,8 @@ import net.runelite.client.util.Text;
 import org.apache.commons.lang3.ArrayUtils;
 
 @PluginDescriptor(
-	name = "Nylo Death Indicators",
-	description = "Hide dead nylos faster"
+	name = "Waves Death Indicators",
+	description = "Hide dead nylos/babboons faster"
 )
 public class NyloDeathIndicatorsPlugin extends Plugin {
     private boolean isInNyloRegion = false;
