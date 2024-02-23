@@ -264,68 +264,27 @@ public class NyloDeathIndicatorsPlugin extends Plugin {
 		}
 	}
 
-	private double getToaHealthScaling()
+	private int getToaPartySize()
 	{
 		int partySize = 1;
-		double partyScaling = 1;
 		for (int i = 1; i < 8; i++) {
-			if (client.getVarbitValue(Varbits.TOA_MEMBER_0_HEALTH + i) != 0)
-			{
+			if (client.getVarbitValue(Varbits.TOA_MEMBER_0_HEALTH + i) != 0) {
 				partySize++;
-				if (partySize < 4) {
-					partyScaling += .9;
-				} else {
-					partyScaling += .6;
-				}
 			}
 		}
-
-		int level = client.getVarbitValue(Varbits.TOA_RAID_LEVEL);
-		double modifier = (2 * level / 500.0) + partyScaling;
-
-		return modifier;
+		return partySize;
 	}
 
 	private void ToANPCSpawned(NpcSpawned event)
 	{
-		double scaling = getToaHealthScaling();
-		final int thrall_base = 2;
-		final int base_health = 4;
-		final int cursed = 10;
-		final int shaman = 16;
+		int level = client.getVarbitValue(Varbits.TOA_RAID_LEVEL);
 
 		NPC npc = event.getNpc();
 		int index = npc.getIndex();
 
-		int health = base_health;
-		switch (npc.getId()) {
-			case NpcID.BABOON_BRAWLER_11712:
-			case NpcID.BABOON_MAGE_11714:
-			case NpcID.BABOON_THROWER_11713:
-				// doubles health after wave X
-				health = base_health * 2;
-			case NpcID.BABOON_BRAWLER:
-			case NpcID.BABOON_MAGE:
-			case NpcID.BABOON_THROWER:
-				// Do nothing
-				break;
-
-			case NpcID.BABOON_SHAMAN:
-				health = shaman;
-				break;
-			case NpcID.CURSED_BABOON:
-				health = cursed;
-				break;
-
-			case NpcID.BABOON_THRALL:
-				health = thrall_base;
-				break;
-
-			default:
-				return;
-		}
-
-		this.nylos.add(new Nylocas(npc, index, (int)Math.floor(health * scaling)));
+		ToaNpcStats stats = ToaNpcStats.lookup(npc.getId());
+		//System.out.println(npc.getName() + " HP: " + scaledHealth);
+		this.nylos.add(new Nylocas(npc, index, stats.getScaledHealth(level, getToaPartySize())));
 	}
 
 	@Subscribe
@@ -383,6 +342,8 @@ public class NyloDeathIndicatorsPlugin extends Plugin {
 					nylocas.setHp(nylocas.getHp() - damage);
 				}
 
+				if (damage > 0)
+					System.out.println("actual damage: " + damage + " " + nylocas.getNpc().getName() + " ");
 				nylocas.setQueuedDamage(Math.max(0, nylocas.getQueuedDamage() - damage));
 			}
 		}
@@ -459,7 +420,7 @@ public class NyloDeathIndicatorsPlugin extends Plugin {
 		processXpDrop(skill, xpAfter - xpBefore);
 	}
 
-	private void processXpDrop(Skill skill, final int xp)
+	private void processXpDrop(Skill skill, int xp)
 	{
 		if (!isInNylocasRegion() && !isInAmpkenregion)
 		{
@@ -469,9 +430,20 @@ public class NyloDeathIndicatorsPlugin extends Plugin {
 		int damage = 0;
 
 		Player player = client.getLocalPlayer();
+
 		if (player == null)
 		{
 			return;
+		}
+
+		int preprocessed_xp = xp;
+		if (isInAmpkenregion) {
+			Actor actor = player.getInteracting();
+			if (actor instanceof NPC) {
+				NPC npc = (NPC) actor;
+				ToaNpcStats stats = ToaNpcStats.lookup(npc.getId());
+				xp = stats.scaleXpDrop(xp);
+			}
 		}
 
 		PlayerComposition playerComposition = player.getPlayerComposition();
@@ -567,7 +539,8 @@ public class NyloDeathIndicatorsPlugin extends Plugin {
 					return;
 				}
 		}
-
+		if (damage > 0)
+			System.out.println("predicted damage: " + damage + " xp: " + xp + " pre processed: " + preprocessed_xp);
 		sendDamage(player, damage);
 	}
 
